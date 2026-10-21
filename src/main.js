@@ -2,7 +2,7 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { CustomEase } from 'gsap/CustomEase';
 import Lenis from 'lenis';
-import { detectQuality } from './core/quality.js';
+import { createContext, detectQuality } from './core/quality.js';
 
 
 const root = document.documentElement;
@@ -74,6 +74,8 @@ function scramble(el) {
   const s = el._scr;
   if (!s || reduced) return;
   cancelAnimationFrame(s.raf);
+  // Lock the box while glyph widths churn so a re-wrap can never shift the layout.
+  el.style.height = `${el.offsetHeight}px`;
   const start = performance.now();
   const n = s.text.length;
   const tick = (now) => {
@@ -86,6 +88,7 @@ function scramble(el) {
     }
     s.vis.textContent = out;
     if (f <= (n - 1) * 0.7 + 7) s.raf = requestAnimationFrame(tick);
+    else el.style.height = '';
   };
   s.raf = requestAnimationFrame(tick);
 }
@@ -307,10 +310,12 @@ function setupPointer() {
 /* ---------------- WebGL (lazy) ---------------- */
 
 function bootGL() {
-  const q = detectQuality();
+  const canvas = $('#gl');
+  const context = createContext(canvas);
+  const q = detectQuality(context);
   if (!q.webgl) { root.classList.add('no-webgl'); return; }
   import('./gl/Renderer.js')
-    .then((m) => m.createScene($('#gl'), state, q))
+    .then((m) => m.createScene(canvas, context, state, q))
     .then((scene) => {
       gl = scene;
       root.classList.add('gl-ready');

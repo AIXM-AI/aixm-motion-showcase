@@ -1,9 +1,11 @@
+// Instanced quads: `position` is the quad corner (−1..1); per-instance data below.
 // Six scroll-keyed targets. 0–3 are baked (normalized Int16 × SCALE); 4 (ribbons)
-// and 5 (tunnel/portal) are derived from gl_VertexID so they can flow over time
+// and 5 (tunnel/portal) are derived from gl_InstanceID so they can flow over time
 // without costing memory or upload.
 
 #define SCALE 1.0
 
+attribute vec3 aP0;
 attribute vec3 aP1;
 attribute vec3 aP2;
 attribute vec3 aP3;
@@ -15,6 +17,7 @@ uniform float uAmp[6];
 uniform float uBright[6];
 uniform float uShift;   // horizontal offset for landscape compositions
 uniform float uPixelRatio;
+uniform vec2 uResolution; // drawing-buffer pixels
 uniform float uSize;
 uniform float uAspect;
 uniform vec2 uMouse;      // NDC
@@ -25,6 +28,7 @@ uniform float uIntro;
 
 varying vec3 vColor;
 varying float vAlpha;
+varying vec2 vCorner;
 
 #include <noise>
 
@@ -39,7 +43,7 @@ uint hash(uint x) {
   x ^= x >> 16;
   return x;
 }
-float rnd(uint k) { return float(hash(uint(gl_VertexID) * 8u + k)) * (1.0 / 4294967295.0); }
+float rnd(uint k) { return float(hash(uint(gl_InstanceID) * 8u + k)) * (1.0 / 4294967295.0); }
 
 // Ribbon parameters: (u along, v across — biased to the edges, ribbon id).
 vec3 ribbonParams() {
@@ -93,7 +97,7 @@ vec4 tunnel(vec3 q) {
 
 vec4 target(float i) {
   float t = uTime;
-  if (i < 0.5) return vec4(rotY(position * SCALE, t * 0.035) + vec3(uShift, 0.25, 0.0), 1.0);
+  if (i < 0.5) return vec4(rotY(aP0 * SCALE, t * 0.035) + vec3(uShift, 0.25, 0.0), 1.0);
   if (i < 1.5) return vec4(rotY(aP1 * SCALE, t * 0.12) + vec3(uShift * 0.75, 0.0, 0.0), 1.0);
   if (i < 2.5) return vec4(rotY(aP2 * SCALE, sin(t * 0.25) * 0.32), 1.0);
   if (i < 3.5) return vec4(rotX(rotY(aP3 * SCALE, t * 0.16), 0.35 + sin(t * 0.2) * 0.15), 1.0);
@@ -141,7 +145,10 @@ void main() {
   depth = -mv.z;
 
   float size = uSize * (0.45 + aSeed.y * aSeed.y * 1.55);
-  gl_PointSize = clamp(size * uPixelRatio * (9.0 / depth), 0.0, 48.0);
+  float px = clamp(size * uPixelRatio * (9.0 / depth), 0.0, 48.0);
+  // Expand the quad in clip space: px is the sprite diameter in buffer pixels.
+  gl_Position.xy += position.xy * px / uResolution * gl_Position.w;
+  vCorner = position.xy;
 
   float fog = smoothstep(34.0, 9.0, depth) * smoothstep(1.2, 4.5, depth);
   float bright = mix(uBright[ia], uBright[ib], tt);

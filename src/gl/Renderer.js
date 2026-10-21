@@ -11,12 +11,14 @@ const damp = (a, b, k, dt) => a + (b - a) * (1 - Math.exp(-k * dt));
 
 /**
  * @param {HTMLCanvasElement} canvas
+ * @param {WebGL2RenderingContext} context  created by core/quality.js
  * @param {{ morph:number, mouse:{x:number,y:number}, pointer:boolean, hold:boolean, reduced:boolean }} state
  * @param {ReturnType<import('../core/quality.js').detectQuality>} quality
  */
-export async function createScene(canvas, state, quality) {
+export async function createScene(canvas, context, state, quality) {
   const renderer = new WebGLRenderer({
     canvas,
+    context,
     antialias: false,
     alpha: false,
     depth: false,
@@ -31,14 +33,10 @@ export async function createScene(canvas, state, quality) {
   const camera = new PerspectiveCamera(38, 1, 0.1, 60);
   camera.position.set(0, 0, 9);
 
-  const points = await createParticles(quality.particles, quality);
-  scene.add(points);
-  const u = points.material.uniforms;
+  const particles = await createParticles(quality.particles, quality);
+  scene.add(particles);
+  const u = particles.material.uniforms;
   const post = quality.post ? new Post(renderer, INK) : null;
-
-  // Compile off the critical path where KHR_parallel_shader_compile is available.
-  await renderer.compileAsync(scene, camera);
-  if (post) await renderer.compileAsync(post.scene, post.camera);
 
   let dpr = Math.min(window.devicePixelRatio || 1, quality.dprMax);
   let width = 0, height = 0;
@@ -57,6 +55,7 @@ export async function createScene(canvas, state, quality) {
     // Landscape: forms sit right of the left-aligned copy; portrait: centred.
     u.uShift.value = camera.aspect > 1.2 ? Math.min(1.8, (camera.aspect - 1.2) * 2.4) : 0;
     u.uPixelRatio.value = dpr;
+    renderer.getDrawingBufferSize(u.uResolution.value);
     post?.setSize(Math.round(w * dpr), Math.round(h * dpr));
   }
 
@@ -71,6 +70,14 @@ export async function createScene(canvas, state, quality) {
   resize();
   lastW = width;
   window.addEventListener('resize', onResize, { passive: true });
+
+  // Compile off the critical path (KHR_parallel_shader_compile). Program variants
+  // depend on the bound target, so warm the particles against the post target —
+  // otherwise the first frame compiles synchronously and stalls the main thread.
+  if (post) renderer.setRenderTarget(post.target);
+  await renderer.compileAsync(scene, camera);
+  renderer.setRenderTarget(null);
+  if (post) await renderer.compileAsync(post.scene, post.camera);
 
   // --- loop state
   let time = 0, morph = state.morph, accent = 0, intro = state.reduced ? 1 : 0;
@@ -108,8 +115,8 @@ export async function createScene(canvas, state, quality) {
     pulse = damp(pulse, Math.min(1, speed * 1.4), 6, dt);
 
     // Gentle parallax tilt from the cursor.
-    points.rotation.y = damp(points.rotation.y, state.pointer ? state.mouse.x * 0.12 : 0, 2, dt);
-    points.rotation.x = damp(points.rotation.x, state.pointer ? -state.mouse.y * 0.08 : 0, 2, dt);
+    particles.rotation.y = damp(particles.rotation.y, state.pointer ? state.mouse.x * 0.12 : 0, 2, dt);
+    particles.rotation.x = damp(particles.rotation.x, state.pointer ? -state.mouse.y * 0.08 : 0, 2, dt);
 
     u.uTime.value = time;
     u.uMorph.value = Math.min(5, Math.max(0, morph));

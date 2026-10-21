@@ -10,25 +10,38 @@ const TIERS = [
 const WEAK_GPU = /(mali-[gt]?[0-7]\d|adreno \(tm\) [1-5]\d\d|powervr|sgx|intel.*(hd|uhd) graphics [1-6]\d{2}|swiftshader|llvmpipe|software)/i;
 const STRONG_GPU = /(rtx|radeon rx|geforce gtx 1[06-9]|apple m\d|apple gpu|adreno \(tm\) [7-9]\d\d|mali-g7[1-9]|mali-g[89]\d|immortalis|arc a)/i;
 
-function probeGPU() {
+// The context is created once, on the real canvas, and handed to the renderer —
+// a throwaway probe context would cost a second (slow) context creation.
+export function createContext(canvas) {
   try {
-    const canvas = document.createElement('canvas');
-    const gl = canvas.getContext('webgl2', { failIfMajorPerformanceCaveat: true });
-    if (!gl) return null;
-    const ext = gl.getExtension('WEBGL_debug_renderer_info');
-    const renderer = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || '');
-    const maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE);
-    gl.getExtension('WEBGL_lose_context')?.loseContext();
-    return { renderer, maxTex };
+    return canvas.getContext('webgl2', {
+      alpha: false,
+      antialias: false,
+      depth: false,
+      stencil: false,
+      premultipliedAlpha: true,
+      powerPreference: 'high-performance',
+      // Software rasterisers (SwiftShader, llvmpipe) get the CSS composition instead.
+      failIfMajorPerformanceCaveat: true,
+    });
   } catch {
     return null;
   }
 }
 
-export function detectQuality() {
+function probeGPU(gl) {
+  const ext = gl.getExtension('WEBGL_debug_renderer_info');
+  return {
+    renderer: String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || ''),
+    maxTex: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+  };
+}
+
+/** @param {WebGL2RenderingContext | null} gl */
+export function detectQuality(gl) {
   const forced = new URLSearchParams(location.search).get('q');
-  const gpu = probeGPU();
-  if (!gpu) return { webgl: false, tier: -1 };
+  if (!gl) return { webgl: false, tier: -1 };
+  const gpu = probeGPU(gl);
 
   const mobile = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 820;
   const cores = navigator.hardwareConcurrency || 4;
