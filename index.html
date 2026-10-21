@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AIXM — AI Web, 3D &amp; Automation Studio · Motion Showcase</title>
+<meta name="description" content="AIXM is an independent studio by RyanX building immersive WebGL websites, real-time 3D and AI automation. This open-source showcase demonstrates scroll storytelling, custom shaders and 90+ Lighthouse performance." />
+<link rel="canonical" href="https://showcase.aixm.ai/" />
+<meta name="theme-color" content="#07070a" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="AIXM — Motion Showcase" />
+<meta property="og:description" content="Immersive WebGL, scroll storytelling and AI automation — an open-source showcase by the AIXM studio." />
+<meta property="og:url" content="https://showcase.aixm.ai/" />
+<meta property="og:image" content="https://showcase.aixm.ai/og.jpg" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="icon" href="/mark.png" />
+<link rel="preload" href="/fonts/montserrat-var.woff2" as="font" type="font/woff2" crossorigin />
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"AIXM","url":"https://aixm.ai","founder":{"@type":"Person","name":"RyanX"},"description":"AI web, 3D and automation studio."}</script>
+<link rel="stylesheet" href="/src/styles.css" />
+<script>document.documentElement.classList.add("js");if(matchMedia("(prefers-reduced-motion: reduce)").matches)document.documentElement.classList.add("reduced");</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<canvas id="gl" aria-hidden="true"></canvas>
+<div class="grain" aria-hidden="true"></div>
+<div class="cursor" aria-hidden="true"><span></span></div>
+
+<header class="nav">
+  <a class="brand" href="#top" aria-label="AIXM studio — home"><span class="brand-mark">AIXM</span><span class="brand-sub">studio</span></a>
+  <nav aria-label="Primary">
+    <ul>
+      <li><a class="nav-link" href="#manifesto" data-text="Approach"><span>Approach</span></a></li>
+      <li><a class="nav-link" href="#capabilities" data-text="Capabilities"><span>Capabilities</span></a></li>
+      <li><a class="nav-link" href="#process" data-text="Process"><span>Process</span></a></li>
+      <li><a class="nav-link" href="#engineering" data-text="Engineering"><span>Engineering</span></a></li>
+    </ul>
+  </nav>
+  <a class="btn btn-ghost magnetic" href="#contact"><span>Start a project</span></a>
+</header>
+
+<main id="main">
+  <section class="hero" id="top" data-scene="0">
+    <p class="eyebrow reveal-up">AI web · Real-time 3D · Automation</p>
+    <h1 class="hero-title">
+      <span class="line"><span class="split">We build</span></span>
+      <span class="line"><span class="split"><em>living</em> interfaces</span></span>
+      <span class="line"><span class="split">for the web.</span></span>
+    </h1>
+    <div class="hero-foot">
+      <p class="hero-lede reveal-up">AIXM is an independent studio led by RyanX. We craft immersive websites where WebGL, motion and AI work together — fast enough to pass Core Web Vitals, refined enough to be remembered.</p>
+      <div class="scroll-cue" aria-hidden="true"><span>Scroll</span><i></i></div>
+    </div>
+  </section>
+
+  <section class="manifesto" id="manifesto" data-scene="1">
+    <p class="eyebrow">01 — Approach</p>
+    <p class="big-statement" data-words>Motion is not decoration. It is how a site <em>explains</em> itself — guiding attention, revealing structure, and turning a scroll into a story.</p>
+    <div class="stats">
+      <div class="stat"><span class="stat-n" data-count="60">60</span><span class="stat-u">fps target</span></div>
+      <div class="stat"><span class="stat-n" data-count="90">90</span><span class="stat-u">+ Lighthouse goal</span></div>
+      <div class="stat"><span class="stat-n" data-count="3">3</span><span class="stat-u">quality tiers</span></div>
+    </div>
+  </section>
+
+  <section class="capabilities" id="capabilities" data-scene="2">
+    <p class="eyebrow">02 — Capabilities</p>
+    <h2 class="section-title"><span class="line"><span class="split">What we make</span></span></h2>
+    <div class="cards">
+      <article class="card tilt">
+        <span class="card-idx">A</span>
+        <h3>Immersive Web</h3>
+        <p>Scroll-driven storytelling, smooth inertial scrolling, page transitions and micro-interactions built with GSAP, Lenis and semantic, SEO-ready HTML.</p>
+        <ul><li>GSAP ScrollTrigger</li><li>Lenis</li><li>Vite</li></ul>
+        <span class="card-glow" aria-hidden="true"></span>
+      </article>
+      <article class="card tilt">
+        <span class="card-idx">B</span>
+        <h3>Real-time 3D</h3>
+        <p>Three.js scenes with custom GLSL shaders, GPU particles and post-processing — tuned with adaptive resolution so they stay smooth on phones.</p>
+        <ul><li>Three.js</li><li>GLSL</li><li>glTF</li></ul>
+        <span class="card-glow" aria-hidden="true"></span>
+      </article>
+      <article class="card tilt">
+        <span class="card-idx">C</span>
+        <h3>AI Automation</h3>
+        <p>LLM-powered tools, content pipelines and agents wired into your site and workflows — practical automation, not buzzwords.</p>
+        <ul><li>LLM APIs</li><li>Workers</li><li>Pipelines</li></ul>
+        <span class="card-glow" aria-hidden="true"></span>
+      </article>
+    </div>
+  </section>
+
+  <section class="process" id="process" data-scene="3">
+    <div class="process-pin">
+      <div class="process-head">
+        <p class="eyebrow">03 — Process</p>
+        <h2 class="section-title"><span class="line"><span class="split">How we work</span></span></h2>
+      </div>
+      <div class="process-track">
+        <div class="step"><span class="step-n">01</span><h3>Discover</h3><p>Audit the current site, goals and constraints. Define the story the scroll should tell.</p></div>
+        <div class="step"><span class="step-n">02</span><h3>Direct</h3><p>Art direction, motion language and a performance budget agreed before a line of code.</p></div>
+        <div class="step"><span class="step-n">03</span><h3>Build</h3><p>Component-based front end, shaders and animation timelines, reviewed on real devices.</p></div>
+        <div class="step"><span class="step-n">04</span><h3>Tune</h3><p>Lighthouse, Core Web Vitals, reduced-motion and low-end fallbacks — measured, not guessed.</p></div>
+        <div class="step"><span class="step-n">05</span><h3>Ship</h3><p>Deploy to the edge, hand over a clean repository with documentation.</p></div>
+      </div>
+      <div class="process-rail" aria-hidden="true"><i></i></div>
+    </div>
+  </section>
+
+  <section class="engineering" id="engineering" data-scene="4">
+    <p class="eyebrow">04 — Engineering</p>
+    <h2 class="section-title"><span class="line"><span class="split">Beautiful <em>and</em> fast.</span></span></h2>
+    <div class="eng-grid">
+      <div class="eng"><h3>Progressive loading</h3><p>HTML and type paint first; the WebGL bundle loads after idle, so 3D never blocks content.</p></div>
+      <div class="eng"><h3>Adaptive quality</h3><p>GPU tier detection, dynamic pixel ratio and particle budgets keep frame times steady.</p></div>
+      <div class="eng"><h3>Reduced motion</h3><p>Honors <code>prefers-reduced-motion</code>: native scroll, static scene, no parallax.</p></div>
+      <div class="eng"><h3>Graceful fallback</h3><p>No WebGL? A CSS gradient composition takes over and every section still works.</p></div>
+    </div>
+    <p class="note">This page is open source — read the code, run Lighthouse, judge for yourself.</p>
+  </section>
+
+  <section class="contact" id="contact" data-scene="5">
+    <p class="eyebrow">05 — Contact</p>
+    <h2 class="contact-title"><span class="line"><span class="split">Let’s make your</span></span><span class="line"><span class="split">site <em>move</em>.</span></span></h2>
+    <div class="contact-cta">
+      <a class="btn btn-solid magnetic" href="https://aixm.ai"><span>Visit aixm.ai ↗</span></a>
+      <a class="btn btn-ghost magnetic" href="https://github.com/AIXM-AI/aixm-motion-showcase"><span>View source ↗</span></a>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="marquee" aria-hidden="true"><div class="marquee-inner"><span>AIXM — WebGL — Motion — Automation — </span><span>AIXM — WebGL — Motion — Automation — </span></div></div>
+  <div class="footer-row">
+    <span>© 2026 AIXM · Studio of RyanX</span>
+    <span>Built with Three.js, GSAP &amp; Lenis · MIT licensed</span>
+  </div>
+</footer>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
