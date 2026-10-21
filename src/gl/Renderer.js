@@ -2,6 +2,9 @@ import { PerspectiveCamera, Scene, WebGLRenderer } from 'three';
 import { createParticles } from './Particles.js';
 import { Post } from './Post.js';
 
+// DOM-free on purpose: runs in a worker on an OffscreenCanvas, or on the main
+// thread as a fallback. The host (gl/host.js) feeds size, visibility and state.
+
 const INK = 0x07070a;
 // Environment accent per scene beat (feeds the iridescence phase).
 const ACCENT = [0.0, 0.35, 0.7, 1.05, 1.4, 1.8];
@@ -9,13 +12,27 @@ const ACCENT = [0.0, 0.35, 0.7, 1.05, 1.4, 1.8];
 // Frame-rate independent damping: same feel at 30, 60 or 120 Hz.
 const damp = (a, b, k, dt) => a + (b - a) * (1 - Math.exp(-k * dt));
 
+const raf = globalThis.requestAnimationFrame
+  ? (cb) => globalThis.requestAnimationFrame(cb)
+  : (cb) => setTimeout(() => cb(performance.now()), 16);
+const caf = globalThis.cancelAnimationFrame ? (id) => globalThis.cancelAnimationFrame(id) : clearTimeout;
+
+// Watchdog: frame time above budget (< 25 fps, so 30 Hz-capped phones still pass)
+// for this long drops one step — first minimum resolution, no post and half the
+// particles, then a still frame. Milder overruns are left to the adaptive DPR.
+const BUDGET_MS = 40;
+const OVER_BUDGET_S = 2;
+
 /**
- * @param {HTMLCanvasElement} canvas
- * @param {WebGL2RenderingContext} context  created by core/quality.js
- * @param {{ morph:number, mouse:{x:number,y:number}, pointer:boolean, hold:boolean, reduced:boolean }} state
- * @param {ReturnType<import('../core/quality.js').detectQuality>} quality
+ * @param {object} o
+ * @param {HTMLCanvasElement | OffscreenCanvas} o.canvas
+ * @param {WebGL2RenderingContext} o.context  created by core/quality.js
+ * @param {{ morph:number, mouse:{x:number,y:number}, pointer:boolean, hold:boolean, reduced:boolean }} o.state
+ * @param {ReturnType<import('../core/quality.js').detectQuality>} o.quality
+ * @param {{ width:number, height:number, dpr:number }} o.view  CSS size + device pixel ratio
+ * @param {string} [o.fontUrl]
  */
-export async function createScene(canvas, context, state, quality) {
+export async function createScene({ canvas, context, state, quality, view, fontUrl }) {
   const renderer = new WebGLRenderer({
     canvas,
     context,
@@ -26,28 +43,28 @@ export async function createScene(canvas, context, state, quality) {
     powerPreference: 'high-performance',
   });
   renderer.setClearColor(INK, 1);
-  // Synchronous program-status queries stall the main thread; dev builds keep them.
+  // Synchronous program-status queries stall the thread; dev builds keep them.
   renderer.debug.checkShaderErrors = import.meta.env.DEV;
 
   const scene = new Scene();
   const camera = new PerspectiveCamera(38, 1, 0.1, 60);
   camera.position.set(0, 0, 9);
 
-  const particles = await createParticles(quality.particles, quality);
+  const particles = await createParticles(quality.particles, quality, fontUrl);
   scene.add(particles);
   const u = particles.material.uniforms;
   const post = quality.post ? new Post(renderer, INK) : null;
+  let usePost = !!post;
 
-  let dpr = Math.min(window.devicePixelRatio || 1, quality.dprMax);
-  let width = 0, height = 0;
+  let { width, height } = view;
+  let deviceDpr = view.dpr;
+  let dpr = Math.min(deviceDpr, quality.dprMax);
 
-  function resize() {
-    const w = canvas.clientWidth, h = canvas.clientHeight;
-    if (!w || !h) return;
-    width = w; height = h;
+  function applySize() {
+    if (!width || !height) return;
     renderer.setPixelRatio(dpr);
-    renderer.setSize(w, h, false);
-    camera.aspect = w / h;
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
     // Portrait screens: pull the camera back so every form fits the width.
     camera.position.z = 9 * Math.max(1, 1.15 / camera.aspect) ** 0.85;
     camera.updateProjectionMatrix();
@@ -56,24 +73,13 @@ export async function createScene(canvas, context, state, quality) {
     u.uShift.value = camera.aspect > 1.2 ? Math.min(1.8, (camera.aspect - 1.2) * 2.4) : 0;
     u.uPixelRatio.value = dpr;
     renderer.getDrawingBufferSize(u.uResolution.value);
-    post?.setSize(Math.round(w * dpr), Math.round(h * dpr));
+    post?.setSize(Math.round(width * dpr), Math.round(height * dpr));
   }
-
-  let lastW = 0;
-  const onResize = () => {
-    // Ignore height-only jitter from mobile toolbars.
-    const w = canvas.clientWidth;
-    if (w === lastW && Math.abs(canvas.clientHeight - height) < 120) return;
-    lastW = w;
-    resize();
-  };
-  resize();
-  lastW = width;
-  window.addEventListener('resize', onResize, { passive: true });
+  applySize();
 
   // Compile off the critical path (KHR_parallel_shader_compile). Program variants
   // depend on the bound target, so warm the particles against the post target —
-  // otherwise the first frame compiles synchronously and stalls the main thread.
+  // otherwise the first frame compiles synchronously and stalls.
   if (post) renderer.setRenderTarget(post.target);
   await renderer.compileAsync(scene, camera);
   renderer.setRenderTarget(null);
@@ -82,25 +88,49 @@ export async function createScene(canvas, context, state, quality) {
   // --- loop state
   let time = 0, morph = state.morph, accent = 0, intro = state.reduced ? 1 : 0;
   let mx = 9, my = 9, vx = 0, vy = 0, force = 1, pulse = 0, prevMorph = morph;
-  let frameEMA = 16.7, sinceTune = 0, raf = 0, last = 0;
-  let visible = true, onscreen = true;
+  let frameEMA = 16.7, sinceTune = 0, handle = 0, last = 0, active = true;
+  let overBudget = 0, warmup = 1, degraded = 0, still = state.reduced;
 
-  function tuneResolution(dt) {
-    frameEMA = frameEMA * 0.94 + dt * 1000 * 0.06;
+  function tuneResolution(dt, rawMs) {
+    frameEMA = frameEMA * 0.94 + rawMs * 0.06;
+    watchdog(dt);
     sinceTune += dt;
     if (sinceTune < 1.2) return;
     sinceTune = 0;
-    const max = Math.min(window.devicePixelRatio || 1, quality.dprMax);
+    const max = Math.min(deviceDpr, quality.dprMax);
     let next = dpr;
-    if (frameEMA > 21) next = Math.max(quality.dprMin, dpr - 0.15);
+    if (frameEMA > 21) next = Math.max(Math.min(quality.dprMin, max), dpr - 0.15);
     else if (frameEMA < 17.5 && dpr < max) next = Math.min(max, dpr + 0.05);
-    if (Math.abs(next - dpr) > 0.01) { dpr = next; resize(); }
+    if (Math.abs(next - dpr) > 0.01) { dpr = next; applySize(); }
+  }
+
+  function watchdog(dt) {
+    if ((warmup -= dt) > 0) return;
+    overBudget = frameEMA > BUDGET_MS ? overBudget + dt : 0;
+    if (overBudget < OVER_BUDGET_S) return;
+    overBudget = 0;
+    warmup = 1;
+    if (degraded++ === 0) {
+      dpr = Math.min(deviceDpr, quality.dprMax, quality.dprMin);
+      applySize();
+      usePost = false;
+      const geo = particles.geometry;
+      geo.instanceCount = Math.ceil(geo.instanceCount / 2);
+      u.uGain.value *= Math.SQRT2;
+    } else {
+      // Still frame: the loop stops for good; scroll beats re-render on demand.
+      still = true;
+      intro = 1;
+      stop();
+      lastStill = -1;
+      renderStill();
+    }
   }
 
   function frame(dt) {
     if (!state.reduced) time += dt;
     const target = state.morph;
-    morph = state.reduced ? Math.round(target) : damp(morph, target, 3.2, dt);
+    morph = still ? Math.round(target) : damp(morph, target, 3.2, dt);
     accent = damp(accent, ACCENT[Math.round(morph)] ?? 0, 1.5, dt);
     intro = damp(intro, 1, 0.9, dt);
 
@@ -126,7 +156,7 @@ export async function createScene(canvas, context, state, quality) {
     u.uAccent.value = accent;
     u.uIntro.value = intro;
 
-    if (post) {
+    if (usePost) {
       const pu = post.material.uniforms;
       pu.uTime.value = time;
       pu.uPulse.value = state.reduced ? 0 : pulse;
@@ -138,49 +168,60 @@ export async function createScene(canvas, context, state, quality) {
   }
 
   function loop(now) {
-    raf = requestAnimationFrame(loop);
-    const dt = Math.min(0.05, last ? (now - last) / 1000 : 0.016);
+    handle = raf(loop);
+    const rawMs = last ? now - last : 16.7;
+    const dt = Math.min(0.05, rawMs / 1000);
     last = now;
     frame(dt);
-    tuneResolution(dt);
+    if (handle) tuneResolution(dt, rawMs);
   }
 
   function start() {
-    if (raf || state.reduced || !visible || !onscreen) return;
+    if (handle || still || !active) return;
     last = 0;
-    raf = requestAnimationFrame(loop);
+    // A resumed tab or scrolled-back canvas starts with a fresh budget window.
+    overBudget = 0;
+    warmup = 1;
+    handle = raf(loop);
   }
   function stop() {
-    cancelAnimationFrame(raf);
-    raf = 0;
+    caf(handle);
+    handle = 0;
   }
-
-  document.addEventListener('visibilitychange', () => {
-    visible = document.visibilityState === 'visible';
-    visible ? start() : stop();
-  });
-  new IntersectionObserver(([e]) => {
-    onscreen = e.isIntersecting;
-    onscreen ? start() : stop();
-  }).observe(canvas);
 
   canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); stop(); });
   canvas.addEventListener('webglcontextrestored', () => start());
 
-  // Reduced motion: a still frame, re-rendered only when the scroll beat changes.
+  // Reduced motion / watchdog: a still frame, re-rendered only when the beat changes.
   let lastStill = -1;
-  const renderStill = () => {
+  function renderStill() {
     const beat = Math.round(state.morph);
     if (beat === lastStill) return;
     lastStill = beat;
     frame(0);
-  };
+  }
 
   frame(0);
   start();
 
   return {
-    renderStill,
-    get dpr() { return dpr; },
+    /** Pause when the tab is hidden or the canvas is off-screen. */
+    setActive(on) {
+      active = on;
+      on ? start() : stop();
+    },
+    resize(w, h, devicePixelRatio) {
+      // Ignore height-only jitter from mobile toolbars.
+      if (w === width && Math.abs(h - height) < 120 && devicePixelRatio === deviceDpr) return;
+      width = w; height = h;
+      deviceDpr = devicePixelRatio;
+      dpr = Math.min(dpr, deviceDpr, quality.dprMax);
+      applySize();
+      if (still) frame(0);
+    },
+    /** Shared state changed: only a still frame needs an explicit re-render. */
+    sync() {
+      if (still) renderStill();
+    },
   };
 }

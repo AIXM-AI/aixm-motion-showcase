@@ -29,7 +29,7 @@ export default defineConfig({
   build: {
     target: 'es2022',
     cssMinify: 'lightningcss',
-    sourcemap: true,
+    sourcemap: false,
     modulePreload: { polyfill: false },
     // three.js ships in the lazily imported WebGL chunk; warn only if it balloons.
     chunkSizeWarningLimit: 700,

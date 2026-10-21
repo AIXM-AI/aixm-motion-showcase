@@ -77,12 +77,19 @@ export function* brain(out, n) {
 
 // AIXM wordmark sampled from canvas text, stacked into five depth slices.
 // The pixel scan happens in prepareGlyph() (async: waits for the web font).
-export async function prepareGlyph() {
+// Works on the main thread (document.fonts) and in a worker (FontFace + OffscreenCanvas).
+export async function prepareGlyph(fontUrl) {
   const W = 1024, H = 300;
-  const cv = document.createElement('canvas');
-  cv.width = W; cv.height = H;
+  const cv = typeof OffscreenCanvas !== 'undefined'
+    ? new OffscreenCanvas(W, H)
+    : Object.assign(document.createElement('canvas'), { width: W, height: H });
   const ctx = cv.getContext('2d', { willReadFrequently: true });
-  try { await document.fonts.load('800 220px Montserrat'); } catch { /* system sans fallback */ }
+  try {
+    if (globalThis.document) await document.fonts.load('800 220px Montserrat');
+    else if (globalThis.fonts && fontUrl) {
+      globalThis.fonts.add(await new FontFace('Montserrat', `url(${fontUrl})`, { weight: '100 900' }).load());
+    }
+  } catch { /* system sans fallback */ }
   ctx.fillStyle = '#fff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';

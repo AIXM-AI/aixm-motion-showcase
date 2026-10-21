@@ -2,8 +2,6 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { CustomEase } from 'gsap/CustomEase';
 import Lenis from 'lenis';
-import { createContext, detectQuality } from './core/quality.js';
-
 
 const root = document.documentElement;
 const $ = (s, el = document) => el.querySelector(s);
@@ -11,9 +9,10 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const finePointer = matchMedia('(hover: hover) and (pointer: fine)').matches;
 
-// Shared with the WebGL scene, which reads it every frame.
+// Shared with the WebGL scene (in a worker when possible); call syncGL() after changes.
 const state = { morph: 0, mouse: { x: 0, y: 0 }, pointer: false, hold: false, reduced };
 let gl = null;
+const syncGL = () => gl?.sync();
 
 if (!reduced) root.classList.add('motion');
 
@@ -225,8 +224,9 @@ function updateMorph() {
     // Hold each form, then morph into the next across the section's last stretch.
     m = i + (i < beats.length - 1 ? smooth(0.62, 1, (mid - b.top) / b.h) : 0);
   }
+  if (m === state.morph) return;
   state.morph = m;
-  if (reduced) gl?.renderStill();
+  syncGL();
 }
 
 /* ---------------- Nav ---------------- */
@@ -253,14 +253,15 @@ function setupPointer() {
     state.mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
     state.mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
     state.pointer = e.pointerType === 'mouse' || e.pointerType === 'pen';
+    syncGL();
   }, { passive: true });
-  document.addEventListener('pointerleave', () => { state.pointer = false; });
+  document.addEventListener('pointerleave', () => { state.pointer = false; syncGL(); });
   // Hidden interaction: click & hold anywhere off a control to gather the field.
   window.addEventListener('pointerdown', (e) => {
-    if (!e.target.closest('a, button')) state.hold = true;
+    if (!e.target.closest('a, button')) { state.hold = true; syncGL(); }
   });
-  window.addEventListener('pointerup', () => { state.hold = false; });
-  window.addEventListener('blur', () => { state.hold = false; });
+  window.addEventListener('pointerup', () => { state.hold = false; syncGL(); });
+  window.addEventListener('blur', () => { state.hold = false; syncGL(); });
 
   if (!finePointer || reduced) return;
 
@@ -309,13 +310,11 @@ function setupPointer() {
 
 /* ---------------- WebGL (lazy) ---------------- */
 
+// Context creation, quality probing (incl. software-GL rejection), geometry and
+// shader compiles all happen in gl/host.js — in a worker when OffscreenCanvas exists.
 function bootGL() {
-  const canvas = $('#gl');
-  const context = createContext(canvas);
-  const q = detectQuality(context);
-  if (!q.webgl) { root.classList.add('no-webgl'); return; }
-  import('./gl/Renderer.js')
-    .then((m) => m.createScene(canvas, context, state, q))
+  import('./gl/host.js')
+    .then((m) => m.startGL($('#gl'), state))
     .then((scene) => {
       gl = scene;
       root.classList.add('gl-ready');

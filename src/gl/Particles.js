@@ -27,12 +27,12 @@ async function drain(gen) {
 // Each particle is an instanced camera-facing quad rather than a GL point: no
 // point-size caps on mobile GPUs, and no draw-time point-sprite shader variant
 // (ANGLE/D3D11 compiles one synchronously on the first POINTS draw).
-export async function createParticles(count, quality) {
+export async function createParticles(count, quality, fontUrl) {
   const geo = new InstancedBufferGeometry();
   geo.setAttribute('position', new BufferAttribute(new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]), 3));
   geo.setIndex([0, 1, 2, 0, 2, 3]);
   geo.instanceCount = count;
-  const glyphSource = await shapes.prepareGlyph();
+  const glyphSource = await shapes.prepareGlyph(fontUrl);
   const builders = [
     ['aP0', (o) => shapes.cloud(o, count)],
     ['aP1', (o) => shapes.brain(o, count)],
